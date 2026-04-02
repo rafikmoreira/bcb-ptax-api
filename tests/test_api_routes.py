@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.api.dependencies import get_ptax_use_case
-from src.domain.entities import CurrencyQuotation, ConvertedAmount
+from src.domain.entities import CurrencyQuotation, ConvertedAmount, CurrencyUsdRate
+from src.domain.exceptions import DomainError
 
 
 def make_mock_use_case(quotations=None, raises=None):
@@ -33,14 +34,14 @@ def make_mock_use_case(quotations=None, raises=None):
             ),
         ]
         mock.list_all_quotations = AsyncMock(return_value=default_quotations)
-        mock.get_currency_in_usd = AsyncMock(return_value={
-            "currency": "EUR",
-            "date": "2026-04-01",
-            "buy_rate_usd": 1.1,
-            "sell_rate_usd": 1.1,
-            "brl_buy": 5.50,
-            "brl_sell": 5.50,
-        })
+        mock.get_currency_in_usd = AsyncMock(return_value=CurrencyUsdRate(
+            currency="EUR",
+            date="2026-04-01",
+            buy_rate_usd=1.1,
+            sell_rate_usd=1.1,
+            brl_buy=5.50,
+            brl_sell=5.50,
+        ))
         mock.convert_amount_in_usd = AsyncMock(return_value=ConvertedAmount(
             currency="EUR",
             amount=100.0,
@@ -89,8 +90,8 @@ class TestListAllQuotations:
         assert response.status_code == 400
         assert "YYYY-MM-DD" in response.json()["detail"]
 
-    def test_returns_404_when_provider_raises_value_error(self):
-        mock = make_mock_use_case(raises=ValueError("Data sem cotações disponíveis."))
+    def test_returns_404_when_provider_raises_domain_error(self):
+        mock = make_mock_use_case(raises=DomainError("Data sem cotações disponíveis."))
         app.dependency_overrides[get_ptax_use_case] = lambda: mock
 
         with TestClient(app) as client:
@@ -126,7 +127,7 @@ class TestGetCurrencyInUsd:
         assert "YYYY-MM-DD" in response.json()["detail"]
 
     def test_returns_404_for_unknown_currency(self):
-        mock = make_mock_use_case(raises=ValueError("Não foi possível encontrar as cotações para XYZ ou USD na data baseada."))
+        mock = make_mock_use_case(raises=DomainError("Não foi possível encontrar as cotações para XYZ ou USD na data baseada."))
         app.dependency_overrides[get_ptax_use_case] = lambda: mock
 
         with TestClient(app) as client:
@@ -194,7 +195,7 @@ class TestConvertCurrencyToUsd:
         assert "YYYY-MM-DD" in response.json()["detail"]
 
     def test_returns_404_for_unknown_currency(self):
-        mock = make_mock_use_case(raises=ValueError("Não foi possível encontrar XYZ ou USD para a conversão."))
+        mock = make_mock_use_case(raises=DomainError("Não foi possível encontrar XYZ ou USD para a conversão."))
         app.dependency_overrides[get_ptax_use_case] = lambda: mock
 
         with TestClient(app) as client:

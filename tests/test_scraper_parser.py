@@ -1,5 +1,6 @@
 import pytest
 from src.infrastructure.bcb_scraper import PlaywrightBCBScraper
+from src.domain.exceptions import QuotationNotFoundError
 
 def test_parse_all_currencies():
     scraper = PlaywrightBCBScraper()
@@ -26,5 +27,5 @@ def test_parse_csv_for_usd_not_found():
     
     outralinha
 """
-    with pytest.raises(ValueError, match="Não foram encontradas cotações válidas"):
+    with pytest.raises(QuotationNotFoundError, match="Não foram encontradas cotações válidas"):
         scraper._parse_all_currencies(csv_text, "2026-03-31")

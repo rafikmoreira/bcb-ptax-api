@@ -1,9 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 from typing import Optional, List
-from src.domain.entities import CurrencyQuotation, ConvertedAmount
+from src.domain.entities import CurrencyQuotation, ConvertedAmount, CurrencyUsdRate
+from src.domain.exceptions import DomainError
 from src.use_cases.get_ptax_quotation import GetPtaxQuotationUseCase
 from src.api.dependencies import get_ptax_use_case
+
+router = APIRouter(prefix="/api/v1", tags=["Quotation"])
+
+def parse_reference_date(reference_date: Optional[str]) -> datetime:
+    if reference_date:
+        try:
+            return datetime.strptime(reference_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de data inválido. Use YYYY-MM-DD.")
+    return datetime.now()
 
 router = APIRouter(prefix="/api/v1", tags=["Quotation"])
 
@@ -18,20 +29,14 @@ async def list_all_quotations(
     incluindo taxas em BRL e as Paridades do site do BC.
     :param reference_date: YYYY-MM-DD (opcional)
     """
-    if reference_date:
-        try:
-            ref_dt = datetime.strptime(reference_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato de data inválido. Use YYYY-MM-DD.")
-    else:
-        ref_dt = datetime.now()
+    ref_dt = parse_reference_date(reference_date)
 
     try:
         return await use_case.list_all_quotations(ref_dt)
-    except ValueError as e:
+    except DomainError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.get("/quotations/{currency}", summary="Equivalência da moeda em USD")
+@router.get("/quotations/{currency}", response_model=CurrencyUsdRate, summary="Equivalência da moeda em USD")
 async def get_currency_in_usd(
     currency: str,
     reference_date: Optional[str] = None,
@@ -42,17 +47,11 @@ async def get_currency_in_usd(
     :param currency: Sigla da moeda (EUR, JPY, GBP...)
     :param reference_date: YYYY-MM-DD (opcional)
     """
-    if reference_date:
-        try:
-            ref_dt = datetime.strptime(reference_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato de data inválido. Use YYYY-MM-DD.")
-    else:
-        ref_dt = datetime.now()
+    ref_dt = parse_reference_date(reference_date)
 
     try:
         return await use_case.get_currency_in_usd(currency, ref_dt)
-    except ValueError as e:
+    except DomainError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.get("/quotations/{currency}/convert", response_model=ConvertedAmount, summary="Converter montante para USD")
@@ -69,15 +68,9 @@ async def convert_currency_to_usd(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="O valor de amount deve ser maior que 0.")
 
-    if reference_date:
-        try:
-            ref_dt = datetime.strptime(reference_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato de data inválido. Use YYYY-MM-DD.")
-    else:
-        ref_dt = datetime.now()
+    ref_dt = parse_reference_date(reference_date)
 
     try:
         return await use_case.convert_amount_in_usd(currency, amount, ref_dt)
-    except ValueError as e:
+    except DomainError as e:
         raise HTTPException(status_code=404, detail=str(e))

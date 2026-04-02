@@ -9,6 +9,14 @@ class CurrencyQuotation(BaseModel):
     usd_parity_buy: float = Field(..., description="Paridade (quantidade de USD para compor 1 unidade, ou vice-versa, dependendo do tipo da moeda) ou conversão direta para dólar de compra")
     usd_parity_sell: float = Field(..., description="Paridade convertida da moeda para venda em Dólar")
     
+class CurrencyUsdRate(BaseModel):
+    currency: str = Field(..., description="Sigla da moeda, ex: EUR, GBP")
+    date: str = Field(..., description="Data de referência da cotação no formato YYYY-MM-DD")
+    buy_rate_usd: float = Field(..., description="Taxa de compra equivalente em Dólares")
+    sell_rate_usd: float = Field(..., description="Taxa de venda equivalente em Dólares")
+    brl_buy: float = Field(..., description="Cotação de compra original em Reais")
+    brl_sell: float = Field(..., description="Cotação de venda original em Reais")
+
 class ConvertedAmount(BaseModel):
     currency: str = Field(...)
     amount: float = Field(..., description="Quantidade original requisitada")

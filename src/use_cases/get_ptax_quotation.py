@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
-from src.domain.entities import CurrencyQuotation, ConvertedAmount, LogEntry
+from src.domain.entities import CurrencyQuotation, ConvertedAmount, LogEntry, CurrencyUsdRate
+from src.domain.exceptions import DomainError, QuotationNotFoundError
 from src.domain.ports import QuotationProvider, QuotationRepository, LogRepository
 
 def get_previous_business_day(from_date: datetime) -> datetime:
@@ -26,6 +27,11 @@ class GetPtaxQuotationUseCase:
             self.log_repository.save_log(LogEntry(level=level, message=message, context=context))
 
     async def list_all_quotations(self, reference_date: Optional[datetime] = None) -> List[CurrencyQuotation]:
+        """
+        Lista todas as moedas e suas cotações para uma data específica.
+        Se a data não for fornecida, utiliza o último dia útil disponível.
+        Recupera do repositório local caso exista, senão busca do BCB e salva no repositório.
+        """
         if reference_date is None:
             target_date = get_previous_business_day(datetime.now())
         else:
@@ -40,7 +46,7 @@ class GetPtaxQuotationUseCase:
 
         try:
             quotations = await self.provider.get_all_quotations_for_date(formatted_date)
-        except ValueError as e:
+        except DomainError as e:
             self._log("ERROR", str(e), "list_all_quotations")
             raise
             
@@ -55,7 +61,7 @@ class GetPtaxQuotationUseCase:
             
         return quotations
         
-    async def get_currency_in_usd(self, currency_code: str, reference_date: Optional[datetime] = None) -> dict:
+    async def get_currency_in_usd(self, currency_code: str, reference_date: Optional[datetime] = None) -> CurrencyUsdRate:
         """
         Retorna a cotação de 1 unidade da moeda informada equivalendo em Dólares.
         (Lastreado no valor do Real contra Dólar).
@@ -68,7 +74,7 @@ class GetPtaxQuotationUseCase:
         if not target_currency or not usd_currency:
             error_msg = f"Não foi possível encontrar as cotações para {currency_code} ou USD na data baseada."
             self._log("ERROR", error_msg, "get_currency_in_usd")
-            raise ValueError(error_msg)
+            raise QuotationNotFoundError(error_msg)
             
         rate_buy_in_usd = target_currency.buy_rate_brl / usd_currency.buy_rate_brl
         rate_sell_in_usd = target_currency.sell_rate_brl / usd_currency.sell_rate_brl
@@ -79,14 +85,14 @@ class GetPtaxQuotationUseCase:
             "get_currency_in_usd",
         )
         
-        return {
-            "currency": currency_code.upper(),
-            "date": target_currency.date,
-            "buy_rate_usd": round(rate_buy_in_usd, 6),
-            "sell_rate_usd": round(rate_sell_in_usd, 6),
-            "brl_buy": target_currency.buy_rate_brl,
-            "brl_sell": target_currency.sell_rate_brl
-        }
+        return CurrencyUsdRate(
+            currency=currency_code.upper(),
+            date=target_currency.date,
+            buy_rate_usd=round(rate_buy_in_usd, 6),
+            sell_rate_usd=round(rate_sell_in_usd, 6),
+            brl_buy=target_currency.buy_rate_brl,
+            brl_sell=target_currency.sell_rate_brl
+        )
 
     async def convert_amount_in_usd(self, currency_code: str, amount: float, reference_date: Optional[datetime] = None) -> ConvertedAmount:
         """
@@ -100,7 +106,7 @@ class GetPtaxQuotationUseCase:
         if not target_currency or not usd_currency:
             error_msg = f"Não foi possível encontrar {currency_code} ou USD para a conversão."
             self._log("ERROR", error_msg, "convert_amount_in_usd")
-            raise ValueError(error_msg)
+            raise QuotationNotFoundError(error_msg)
             
         rate_buy = target_currency.buy_rate_brl / usd_currency.buy_rate_brl
         rate_sell = target_currency.sell_rate_brl / usd_currency.sell_rate_brl

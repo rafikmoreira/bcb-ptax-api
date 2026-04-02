@@ -1,12 +1,14 @@
 import csv
 import io
 import os
+import tempfile
 from datetime import datetime
 from typing import List
 
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 from src.domain.entities import CurrencyQuotation
+from src.domain.exceptions import QuotationNotFoundError, ScrapingError
 from src.domain.ports import QuotationProvider
 
 CACHE_DIR = os.path.join(os.getcwd(), "data", "csvs")
@@ -67,15 +69,18 @@ class PlaywrightBCBScraper(QuotationProvider):
                             frame.locator("a, button").filter(has_text="CSV").first
                         )
                         await download_btn.click()
-                except Exception as e:
+                except PlaywrightTimeoutError as e:
                     # Capturamos o texto do body para mostrar erro útil (ex: data sem cotação/feriado)
                     body_text = await frame.locator("body").inner_text()
-                    raise ValueError(
+                    raise QuotationNotFoundError(
                         f"Não foi possível baixar o CSV para a data {target_date}. A página pode não conter cotações. Erro original: {str(e)}. Resposta do Banco Central: {body_text.strip()[:300]}"
+                    ) from e
+                except Exception as e:
+                    raise ScrapingError(
+                        f"Erro inesperado durante o scraping para a data {target_date}: {str(e)}"
                     ) from e
 
                 download = await download_info.value
-                import tempfile
 
                 with tempfile.TemporaryDirectory() as tmpdir:
                     temp_path = os.path.join(tmpdir, "temp.csv")
@@ -122,11 +127,11 @@ class PlaywrightBCBScraper(QuotationProvider):
                         usd_parity_sell=parity_sell,
                     )
                 )
-            except IndexError, ValueError:
+            except (IndexError, ValueError):
                 continue
 
         if not quotations:
-            raise ValueError(
+            raise QuotationNotFoundError(
                 f"Não foram encontradas cotações válidas no CSV para a data {target_date}"
             )
 
